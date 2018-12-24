@@ -16,21 +16,147 @@ DHT dht(DHTPIN, DHTTYPE);
 Servo baffleServo;
 
 // Environment value limits
-const float humidityLower = 50;
-const float humidityUpper = 90;
-const float tempLower = 22;
-const float tempUpper = 23;
+const float optimalTemperature[] = {22, 25};
+const float optimalHumidity[] = {65, 80};
+const float warningTemperature[] = {20, 27};
+const float warningHumidity[] = {55, 85};
+const float dangerTemperature[] = {20, 25};
+const float dangerHumidity[] = {50, 95};
 
-int isHumidityAboveLimit = 0;
-int isHumidityBelowLimit = 0;
-int isTempAboveLimit = 0;
-int isTempBelowLimit = 0;
-
+// App variables
 int isBaffleOpen = 0;
 int airState = 0 ; // 0 - fans off, 1 - ventilating (no AC), 2 - cooling, 3 - heating
-
 long mistOnTime = 0;
 int readingsTaken = 0;
+
+class DHTReading {
+  private:
+    float _humidity, _temperature;
+  public:
+    DHTReading() {
+      _humidity = dht.readHumidity();
+      _temperature = dht.readTemperature();
+    }
+    float getTemp()
+    {
+      return _temperature;
+    }
+    float getHum()
+    {
+      return _humidity;
+    }
+    bool isValid() {
+      return (!isnan(_humidity) && !isnan(_temperature));
+    }
+    String toString() {
+      String s;
+      s += "Humidity: ";
+      s += getHum();
+      s += "% ";
+      s += "Temperature: ";
+      s += getTemp();
+      s += " *C";
+      return s;
+    }
+};
+
+class Band {
+  private:
+    float _lower, _upper;
+  public:
+    Band(){};
+    Band(float lower, float upper) {
+      _lower = lower;
+      _upper = upper;
+    }
+    Band(float* arr) {
+      _lower = arr[0];
+      _upper = arr[1];
+    }
+    float getLower() {
+      return _lower;
+    }
+    float getUpper() {
+      return _upper;
+    }
+    bool belowLower(float num) {
+      return num < _lower;
+    }
+    bool aboveUpper(float num) {
+      return num > _upper;
+    }
+    int stateCheck(float num) {
+      int state;
+      belowLower(num) ? state = 0 : aboveUpper(num) ? state = 2 : state = 1;
+      return state;
+    }
+    virtual String toString() {
+      String s;
+      s += "lower ";
+      s += _lower;
+      s += ", upper ";
+      s += _upper;
+      return s;
+    }
+};
+
+class EnvironmentMonitor {
+  private:
+    Band _tempOptimal, _humOptimal;
+    Band _tempWarn, _humWarn;
+    Band _tempDanger, _humDanger;
+    int _tempState, _humState;
+  public:
+    EnvironmentMonitor(Band to, Band ho) {
+      _tempOptimal = to;
+      _humOptimal = ho;
+      _tempWarn = to;
+      _humWarn = ho;
+      _tempDanger = to;
+      _humDanger = ho;
+    }
+    EnvironmentMonitor(Band to, Band ho, Band tw, Band hw, Band td, Band hd) {
+      _tempOptimal = to;
+      _humOptimal = ho;
+      _tempWarn = tw;
+      _humWarn = hw;
+      _tempDanger = td;
+      _humDanger = hd;
+    }
+    Band getTempOptimal() {
+      return _tempOptimal;
+    }
+    int getTempState() {
+      return _tempState;
+    }
+    int getHumState() {
+      return _humState;
+    }
+    void setHTState(DHTReading dhtreading) {
+      setTempState(dhtreading.getTemp());
+      setHumState(dhtreading.getHum());
+    }
+    void setTempState(float temp) {
+      _tempState = _tempOptimal.stateCheck(temp);
+    }
+    void setHumState(float hum) {
+      _humState = _humOptimal.stateCheck(hum);
+    }
+    String toString() {
+      String s;
+      s += "\nEnvironment Monitor status:";
+      s += "\nOptimal temperature range: ";
+      s += _tempOptimal.toString();
+      s += "\nOptimal humidity range: ";
+      s += _humOptimal.toString();
+      s += "\nEnv states:";
+      s += "\nTemperature state ";
+      s += _tempState;
+      s += "\nHumidity state ";
+      s += _humState;
+      return s;
+    }
+};
 
 class Device {
   private:
@@ -57,30 +183,19 @@ class Device {
       return _isOn;
     }
     void setupDevice() {
-      String mode;
       switch (_pinmode) {
         case 0:
           pinMode(_pin, OUTPUT);
-          mode = "output";
           break;
         case 1:
           pinMode(_pin, INPUT);
-          mode = "input";
           break;
         case 2:
           pinMode(_pin, INPUT_PULLUP);
-          mode = "input pullup";
           break;
         default:
-          mode = "PINMODE ERROR!";
           break;
       }
-      Serial.print("Set up device ");
-      Serial.print(_name);
-      Serial.print(" at pin ");
-      Serial.print(_pin);
-      Serial.print(" with pinmode ");
-      Serial.println(mode);
     }
     void on() {
       if(!_isOn) {
@@ -94,51 +209,26 @@ class Device {
         _isOn = false;
       }
     }
-    void printStatusToSerial() {
+    String statusToString() {
       String s;
       s += _name;
       _isOn ? s += " ON." : s += " OFF.";
-      Serial.println(s);
+      return s;
     }
-    void printSetupToSerial() {
+    String setupToString() {
       String s;
-      s += "Pin ";
+      s += _name;
+      s += " set up at pin ";
       s += _pin;
-      s += " pinmode ";
+      s += " with pinmode ";
       s += _pinmode;
-      Serial.println(s);
+      return s;
     }
 };
 
-class DHTReading {
-  private:
-    float _humidity, _temperature;
-  public:
-    DHTReading() {
-      _humidity = dht.readHumidity();
-      _temperature = dht.readTemperature();
-      if (isValid()) readingsTaken++;
-    }
-    float getTemp()
-    {
-      return _temperature;
-    }
-    float getHum()
-    {
-      return _humidity;
-    }
-    bool isValid() {
-      return (!isnan(_humidity) && !isnan(_temperature));
-    }
-    void printToSerial() {
-      Serial.print("Humidity: ");
-      Serial.print(getHum());
-      Serial.print(" %\t");
-      Serial.print("Temperature: ");
-      Serial.print(getTemp());
-      Serial.println(" *C ");
-    }
-};
+Band tempOpt(optimalTemperature);
+Band humOpt(optimalHumidity);
+EnvironmentMonitor em(tempOpt, humOpt);
 
 Device coolfan("cool fan", COOLFAN);
 Device hotfan("hot fan", HOTFAN);
@@ -159,73 +249,12 @@ void delayMinutes(float minutes) {
   delay(delaymillis);
 }
 
-void humidityCheck(float hum) {
-  // Check humidity against limits
-  if (hum < humidityLower) {
-    isHumidityBelowLimit = 1;
-    Serial.print("Humidity below ");
-    Serial.print(humidityLower);
-    Serial.println("%");
-  } else if (hum > humidityUpper) {
-    isHumidityAboveLimit = 1;
-    Serial.print("Humidity above ");
-    Serial.print(humidityUpper);
-    Serial.println("%");
-  } else {
-    isHumidityBelowLimit = 0;
-    isHumidityAboveLimit = 0;
-  }
-}
-
-void tempCheck(float temp) {
-  // Check temperature against limits
-  if (temp < tempLower) {
-    isTempBelowLimit = 1;
-    Serial.print("Temperature below ");
-    Serial.print(tempLower);
-    Serial.println(" *C");
-  } else if (temp > tempUpper) {
-    isTempAboveLimit = 1;
-    Serial.print("Temperature above ");
-    Serial.print(tempUpper);
-    Serial.println(" *C");
-  } else {
-    isTempBelowLimit = 0;
-    isTempAboveLimit = 0;
-  }
-}
-
-void determineAirState() {
-  if (isTempBelowLimit) airState = 2;
-  if (isTempAboveLimit) airState = 3;
-  if (isHumidityAboveLimit) airState = 1;
-  Serial.print("AC state: ");
-  switch (airState) {
-    case 0:
-      Serial.println("All off");
-      return;
-    case 1:
-      Serial.println("Ventilation on");
-      return;
-    case 2:
-      Serial.println("Cooling on");
-      return;
-    case 3:
-      Serial.println("Heating on");
-      return;
-    default:
-      Serial.println("Problem determining AC state!");
-      return;
-  }
-}
-
 // Baffle methods
 void baffleOpen() {
   if (!isBaffleOpen) {
     Serial.println("Opening baffle!");
     isBaffleOpen = 1;
   }
-  return;
 }
 
 void baffleClose() {
@@ -233,7 +262,6 @@ void baffleClose() {
     Serial.println("Closing baffle!");
     isBaffleOpen = 0;
   }
-  return;
 }
 
 void setup() {
@@ -243,6 +271,7 @@ void setup() {
 
   for(int i = 0; i < deviceNumber; i++) {
     deviceList[i].setupDevice();
+    Serial.println(deviceList[i].setupToString());
   };
   
   //  baffleServo.attach(9);
@@ -253,37 +282,36 @@ void setup() {
 }
 
 void loop() {
-  
+  // Take a new DHT reading
   DHTReading reading;
-  float humidity = reading.getHum();
-  float temperature = reading.getTemp();
-
-  // Check if any reads failed and exit early (to try again).
+  
+  // Check if reading failed and exit early to retry
+  // Delayed to avoid sensor damage
   if (!reading.isValid()) {
     Serial.println("Failed to read from DHT sensor!");
     Serial.println("Waiting to try again...");
     delay(5000);
     Serial.println("Re-reading...");
     return;
+  } else {
+    readingsTaken++;
   }
   
-  Serial.print("\nReading #");
+  Serial.print("\n\nReading #");
   Serial.println(readingsTaken);
-  reading.printToSerial();
-  
-  humidityCheck(humidity);
-  tempCheck(temperature);
+  Serial.println(reading.toString());
 
-  determineAirState();
-  
-  coolfan.printStatusToSerial();
-  hotfan.printStatusToSerial();
-  mist.printStatusToSerial();
-  peltier.printStatusToSerial();
-
+  Serial.println(coolfan.statusToString());
+  Serial.println(hotfan.statusToString());
+  Serial.println(mist.statusToString());
+  Serial.println(peltier.statusToString());
 
   Serial.print("Baffle open: ");
-  Serial.println(isBaffleOpen);  
+  Serial.println(isBaffleOpen);
+
+  em.setHTState(reading);
+
+  Serial.print(em.toString());
 
   // Delay between measurements
   delayMinutes(.2);
