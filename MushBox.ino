@@ -35,13 +35,14 @@ int readingsTaken = 0;
 class Device {
   private:
     String _name;
-    int _pin, _pinmode, _isOn;
+    int _pin, _pinmode;
+    bool _isOn;
   public:
     Device(String name, int pin, int pinmode = 0) {
       _name = name;
       _pin = pin;
       _pinmode = pinmode;
-      _isOn = 0;
+      _isOn = false;
     }
     String getName() {
       return _name;
@@ -52,7 +53,7 @@ class Device {
     int getPinmode() {
       return _pinmode;
     }
-    int isOn() {
+    bool isOn() {
       return _isOn;
     }
     void setupDevice() {
@@ -84,19 +85,19 @@ class Device {
     void on() {
       if(!_isOn) {
         digitalWrite(_pin, HIGH);
-        _isOn = 1;
+        _isOn = true;
       }
     }
     void off() {
       if(_isOn) {
         digitalWrite(_pin, LOW);
-        _isOn = 0;
+        _isOn = false;
       }
     }
     void printStatusToSerial() {
       String s;
       s += _name;
-      _isOn ? s += " is ON. " : s += " is OFF. ";
+      _isOn ? s += " ON." : s += " OFF.";
       Serial.println(s);
     }
     void printSetupToSerial() {
@@ -243,13 +244,16 @@ void setup() {
   for(int i = 0; i < deviceNumber; i++) {
     deviceList[i].setupDevice();
   };
+  
   //  baffleServo.attach(9);
   dht.begin();
+
   Serial.println("Setup complete.");
   delay(100);
 }
 
 void loop() {
+  
   DHTReading reading;
   float humidity = reading.getHum();
   float temperature = reading.getTemp();
@@ -263,7 +267,6 @@ void loop() {
     return;
   }
   
-
   Serial.print("\nReading #");
   Serial.println(readingsTaken);
   reading.printToSerial();
@@ -273,10 +276,11 @@ void loop() {
 
   determineAirState();
   
-  // Iterate through devices, change limit to reflect # of devices
-  for (int i = 0; i < 4; i++) {
-    deviceList[i].printStatusToSerial();
-  };
+  coolfan.printStatusToSerial();
+  hotfan.printStatusToSerial();
+  mist.printStatusToSerial();
+  peltier.printStatusToSerial();
+
 
   Serial.print("Baffle open: ");
   Serial.println(isBaffleOpen);  
