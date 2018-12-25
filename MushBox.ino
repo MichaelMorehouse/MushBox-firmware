@@ -25,139 +25,10 @@ const float dangerHumidity[] = {50, 95};
 
 // App variables
 int isBaffleOpen = 0;
-int airState = 0 ; // 0 - fans off, 1 - ventilating (no AC), 2 - cooling, 3 - heating
 long mistOnTime = 0;
 int readingsTaken = 0;
 
-class DHTReading {
-  private:
-    float _humidity, _temperature;
-  public:
-    DHTReading() {
-      _humidity = dht.readHumidity();
-      _temperature = dht.readTemperature();
-    }
-    float getTemp()
-    {
-      return _temperature;
-    }
-    float getHum()
-    {
-      return _humidity;
-    }
-    bool isValid() {
-      return (!isnan(_humidity) && !isnan(_temperature));
-    }
-    String toString() {
-      String s;
-      s += "Humidity: ";
-      s += getHum();
-      s += "% ";
-      s += "Temperature: ";
-      s += getTemp();
-      s += " *C";
-      return s;
-    }
-};
-
-class Band {
-  private:
-    float _lower, _upper;
-  public:
-    Band(){};
-    Band(float lower, float upper) {
-      _lower = lower;
-      _upper = upper;
-    }
-    Band(float* arr) {
-      _lower = arr[0];
-      _upper = arr[1];
-    }
-    float getLower() {
-      return _lower;
-    }
-    float getUpper() {
-      return _upper;
-    }
-    bool belowLower(float num) {
-      return num < _lower;
-    }
-    bool aboveUpper(float num) {
-      return num > _upper;
-    }
-    int stateCheck(float num) {
-      int state;
-      belowLower(num) ? state = 0 : aboveUpper(num) ? state = 2 : state = 1;
-      return state;
-    }
-    virtual String toString() {
-      String s;
-      s += "lower ";
-      s += _lower;
-      s += ", upper ";
-      s += _upper;
-      return s;
-    }
-};
-
-class EnvironmentMonitor {
-  private:
-    Band _tempOptimal, _humOptimal;
-    Band _tempWarn, _humWarn;
-    Band _tempDanger, _humDanger;
-    int _tempState, _humState;
-  public:
-    EnvironmentMonitor(Band to, Band ho) {
-      _tempOptimal = to;
-      _humOptimal = ho;
-      _tempWarn = to;
-      _humWarn = ho;
-      _tempDanger = to;
-      _humDanger = ho;
-    }
-    EnvironmentMonitor(Band to, Band ho, Band tw, Band hw, Band td, Band hd) {
-      _tempOptimal = to;
-      _humOptimal = ho;
-      _tempWarn = tw;
-      _humWarn = hw;
-      _tempDanger = td;
-      _humDanger = hd;
-    }
-    Band getTempOptimal() {
-      return _tempOptimal;
-    }
-    int getTempState() {
-      return _tempState;
-    }
-    int getHumState() {
-      return _humState;
-    }
-    void setHTState(DHTReading dhtreading) {
-      setTempState(dhtreading.getTemp());
-      setHumState(dhtreading.getHum());
-    }
-    void setTempState(float temp) {
-      _tempState = _tempOptimal.stateCheck(temp);
-    }
-    void setHumState(float hum) {
-      _humState = _humOptimal.stateCheck(hum);
-    }
-    String toString() {
-      String s;
-      s += "\nEnvironment Monitor status:";
-      s += "\nOptimal temperature range: ";
-      s += _tempOptimal.toString();
-      s += "\nOptimal humidity range: ";
-      s += _humOptimal.toString();
-      s += "\nEnv states:";
-      s += "\nTemperature state ";
-      s += _tempState;
-      s += "\nHumidity state ";
-      s += _humState;
-      return s;
-    }
-};
-
+// Class definitions
 class Device {
   private:
     String _name;
@@ -226,24 +97,181 @@ class Device {
     }
 };
 
-Band tempOpt(optimalTemperature);
-Band humOpt(optimalHumidity);
-EnvironmentMonitor em(tempOpt, humOpt);
-
-Device coolfan("cool fan", COOLFAN);
-Device hotfan("hot fan", HOTFAN);
-Device mist("mist", MIST);
-Device peltier("peltier", PELTIER);
-
-Device deviceList[] = {
-  coolfan,
-  hotfan,
-  mist,
-  peltier
+class DHTReading {
+  private:
+    float _humidity, _temperature;
+  public:
+    DHTReading() {
+      _humidity = dht.readHumidity();
+      _temperature = dht.readTemperature();
+    }
+    float getTemp()
+    {
+      return _temperature;
+    }
+    float getHum()
+    {
+      return _humidity;
+    }
+    bool isValid() {
+      return (!isnan(_humidity) && !isnan(_temperature));
+    }
+    String toString() {
+      String s;
+      s += "Humidity: ";
+      s += getHum();
+      s += "% ";
+      s += "Temperature: ";
+      s += getTemp();
+      s += " *C";
+      return s;
+    }
 };
-// !Must match number of devices added to device list!
-const int deviceNumber = 4;
 
+class Band {
+  private:
+    float _lower, _upper;
+  public:
+    Band(){      
+      _lower = 0;
+      _upper = 0;
+    };
+    Band(float lower, float upper) {
+      _lower = lower;
+      _upper = upper;
+    }
+    Band(float* arr) {
+      _lower = arr[0];
+      _upper = arr[1];
+    }
+    float getLower() {
+      return _lower;
+    }
+    float getUpper() {
+      return _upper;
+    }
+    bool belowLower(float num) {
+      return num < _lower;
+    }
+    bool aboveUpper(float num) {
+      return num > _upper;
+    }
+    int stateCheck(float num) {
+      int state;
+      belowLower(num) ? state = 0 : aboveUpper(num) ? state = 2 : state = 1;
+      return state;
+    }
+    virtual String toString() {
+      String s;
+      s += "lower ";
+      s += _lower;
+      s += ", upper ";
+      s += _upper;
+      return s;
+    }
+};
+
+class Environment {
+  private:
+    Band _tempOptimal, _humOptimal;
+    Band _tempWarn, _humWarn;
+    Band _tempDanger, _humDanger;
+  public:
+    Environment(){};
+    Environment(Band to = {0,0}, Band ho = {0,0}, Band tw = {0,0}, Band hw = {0,0}, Band td = {0,0}, Band hd = {0,0}) {
+      _tempOptimal = to;
+      _humOptimal = ho;
+      _tempWarn = tw;
+      _humWarn = hw;
+      _tempDanger = td;
+      _humDanger = hd;
+    }
+    Band getTempOptimal() {
+      return _tempOptimal;
+    }    
+    Band getHumOptimal() {
+      return _humOptimal;
+    }
+    String toString() {
+      String s;
+      s += "\nEnvironment parameters:";
+      s += "\nOptimal temperature range: ";
+      s += _tempOptimal.toString();
+      s += "\nOptimal humidity range: ";
+      s += _humOptimal.toString();
+      if (_tempWarn.getUpper() - _tempWarn.getLower() != 0) {
+        s += "\nWarning temperature range: ";
+        s += _tempWarn.toString();
+      }
+      if (_humWarn.getUpper() - _humWarn.getLower() != 0) {
+        s += "\nWarning humidity range: ";
+        s += _humWarn.toString();            
+      }
+      if (_tempDanger.getUpper() - _tempDanger.getLower() != 0) {
+        s += "\nDanger temperature range: ";
+        s += _tempDanger.toString();
+      }
+      if (_humDanger.getUpper() - _humDanger.getLower() != 0) {
+        s += "\nDanger humidity range: ";
+        s += _humDanger.toString();            
+      }
+      return s;
+    }
+};
+
+class EnvironmentMonitor {
+  private:
+    Environment* _env;
+    DHTReading* _htreading;
+    int _tempState, _humState;
+    void setHTState() {
+      if (_htreading) {
+        setTempState();
+        setHumState();
+      }
+    }
+    void setTempState() {
+      _tempState = _env->getTempOptimal().stateCheck(_htreading->getTemp());
+    }
+    void setHumState() {
+      _humState = _env->getHumOptimal().stateCheck(_htreading->getHum());
+    }
+  public:
+    EnvironmentMonitor(){};
+    EnvironmentMonitor(Environment* env) {
+      _env = env;
+    }
+    void setHTReading(DHTReading* reading) {
+      _htreading = reading;
+      setHTState();
+    }
+    int getTempState() {
+      return _tempState;
+    }
+    int getHumState() {
+      return _humState;
+    }
+    String toString() {
+      String s;
+      s += "\nEnv states:";
+      s += "\nTemperature state ";
+      s += _tempState;
+      s += "\nHumidity state ";
+      s += _humState;
+      return s;
+    }
+};
+
+//class EnvironmentController {
+//  private:
+//  Device _coolfan, _hotfan, _mist, _peltier;
+//  public:
+//    EnvironmentController() {
+//      
+//    }
+//};
+
+// Helper methods
 void delayMinutes(float minutes) {
   float delaymillis = minutes * 60000;
   delay(delaymillis);
@@ -263,6 +291,27 @@ void baffleClose() {
     isBaffleOpen = 0;
   }
 }
+
+Device coolfan("cool fan", COOLFAN);
+Device hotfan("hot fan", HOTFAN);
+Device mist("mist", MIST);
+Device peltier("peltier", PELTIER);
+
+Device deviceList[] = {
+  coolfan,
+  hotfan,
+  mist,
+  peltier
+};
+// !! Must match number of devices added to device list !!
+const int deviceNumber = 4;
+
+Band tempOpt(optimalTemperature);
+Band humOpt(optimalHumidity);
+Band tempWarn(warningTemperature);
+Band humWarn(warningHumidity);
+Environment env(tempOpt, humOpt, tempWarn, humWarn);
+EnvironmentMonitor em(&env);
 
 void setup() {
   Serial.begin(9600);
@@ -296,6 +345,8 @@ void loop() {
   } else {
     readingsTaken++;
   }
+
+  em.setHTReading(&reading);
   
   Serial.print("\n\nReading #");
   Serial.println(readingsTaken);
@@ -309,10 +360,9 @@ void loop() {
   Serial.print("Baffle open: ");
   Serial.println(isBaffleOpen);
 
-  em.setHTState(reading);
-
-  Serial.print(em.toString());
-
+  Serial.println(env.toString());
+  Serial.println(em.toString());
+  
   // Delay between measurements
   delayMinutes(.2);
 }
