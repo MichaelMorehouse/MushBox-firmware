@@ -8,8 +8,8 @@
 // Pin definitions
 const int DHTPIN = 2;       // DHT sensor data pin
 const int COOLFAN =  4;     // [PWM] PWM fan control output pin for cool air fan
-const int HOTFAN = 7;       // [PWM] PWM fan control output pin for hot air fan
-const int MIST = 8;    // 12v atomister control output pin
+const int HOTFAN = 8;       // [PWM] PWM fan control output pin for hot air fan
+const int MIST = 7;    // 12v atomister control output pin
 const int MISTSWITCH = 13; // Atomister on/off switch pin
 const int PELTIER = 12; // 12v Peltier Plate relay output pin
 
@@ -17,8 +17,8 @@ DHT dht(DHTPIN, DHTTYPE);
 Servo baffleServo;
 
 // Environment value limits
-const float optimalTemperature[] = {22, 25};
-const float optimalHumidity[] = {95,99};
+const float optimalTemperature[] = {23, 25};
+const float optimalHumidity[] = {90, 99};
 const float warningTemperature[] = {20, 27};
 const float warningHumidity[] = {55, 85};
 const float dangerTemperature[] = {20, 25};
@@ -38,17 +38,17 @@ class Device {
     Device() {
       _isOn = false;
     }
-    Device(String name):Device() {
+    Device(String name): Device() {
       _name = name;
     }
     bool isOn() {
       return _isOn;
     }
-    
+
     virtual void setupDevice() {}
     virtual void on() {}
     virtual void off() {}
-    
+
     String statusToString() {
       String s;
       s += _name;
@@ -61,18 +61,18 @@ class Relay : public Device {
   private:
     int _relaypin;
   public:
-    Relay(String name, int pin):Device(name) {
+    Relay(String name, int pin): Device(name) {
       _relaypin = pin;
     }
     void on() {
-        if (!_isOn) {
-          digitalWrite(_relaypin, HIGH);
-          _isOn = true;
-        }
+      if (!_isOn) {
+        digitalWrite(_relaypin, HIGH);
+        _isOn = true;
+      }
     }
     void off() {
-        digitalWrite(_relaypin, LOW);
-        _isOn = false;
+      digitalWrite(_relaypin, LOW);
+      _isOn = false;
     }
     void setupDevice() {
       pinMode(_relaypin, OUTPUT);
@@ -83,27 +83,27 @@ class MistDevice : public Device {
   private:
     int _relaypin, _switchpin;
   public:
-    MistDevice(String name, int pin, int sp):Device(name) {
+    MistDevice(String name, int pin, int sp): Device(name) {
       _relaypin = pin;
       _switchpin = sp;
     }
     void on() {
-        if (!_isOn) {
-          digitalWrite(_relaypin, HIGH);
-          digitalWrite(_switchpin, LOW);
-          delay(500);
-          digitalWrite(_switchpin, HIGH);
-          _isOn = true;
-        }
-    }
-    void off() {
-        digitalWrite(_relaypin, LOW);
+      if (!_isOn) {
+        digitalWrite(_relaypin, HIGH);
         digitalWrite(_switchpin, LOW);
         delay(500);
         digitalWrite(_switchpin, HIGH);
-        _isOn = false;
+        _isOn = true;
+      }
     }
-    void setupDevice() {
+    void off() {
+      digitalWrite(_relaypin, LOW);
+      digitalWrite(_switchpin, LOW);
+      delay(500);
+      digitalWrite(_switchpin, HIGH);
+      _isOn = false;
+    }
+    void setupDevice() override {
       pinMode(_relaypin, OUTPUT);
       pinMode(_switchpin, OUTPUT);
       digitalWrite(_switchpin, HIGH);
@@ -163,16 +163,11 @@ class Band {
     float getUpper() {
       return _upper;
     }
-    bool belowLower(float num) {
+    bool below(float num) {
       return num < _lower;
     }
-    bool aboveUpper(float num) {
+    bool above(float num) {
       return num > _upper;
-    }
-    int stateCheck(float num) {
-      int state;
-      belowLower(num) ? state = 0 : aboveUpper(num) ? state = 2 : state = 1;
-      return state;
     }
     virtual String toString() {
       String s;
@@ -235,45 +230,31 @@ class Environment {
 class EnvironmentMonitor {
   private:
     Environment *_env;
-    DHTReading *_htreading;
-    int _tempState, _humState;
-    void setHTState() {
-      if (_htreading) {
-        setTempState();
-        setHumState();
-      }
-    }
-    void setTempState() {
-      _tempState = _env->getTempOptimal().stateCheck(_htreading->getTemp());
-    }
-    void setHumState() {
-      _humState = _env->getHumOptimal().stateCheck(_htreading->getHum());
-    }
+    bool _needHeating, _needCooling, _needHumidity;
   public:
-    EnvironmentMonitor() {};
-    EnvironmentMonitor(Environment* env) {
+    EnvironmentMonitor(Environment *env) {
       _env = env;
+      _needHeating, _needCooling, _needHumidity = 0;
     }
-    void setHTReading(DHTReading* reading) {
-      _htreading = reading;
-      setHTState();
+    void determineNeeds(DHTReading *reading) {
+      float temp = reading->getTemp();
+      float hum = reading->getHum();
+      _needHeating = _env->getTempOptimal().below(temp);
+      _needCooling = _env->getTempOptimal().above(temp);
+      _needHumidity = _env->getHumOptimal().below(hum);
     }
-    Environment* getEnv() {
-      return _env;
+    bool needHeating() {
+      return _needHeating;
     }
-    int getTempState() {
-      return _tempState;
+    bool needCooling() {
+      return _needCooling;
     }
-    int getHumState() {
-      return _humState;
+    int needHumidity() {
+      return _needHumidity;
     }
     String toString() {
       String s;
-      s += "Env states:";
-      s += "\nTemperature state ";
-      s += _tempState;
-      s += "\nHumidity state ";
-      s += _humState;
+      s += "Monitoring environment...";
       return s;
     }
 };
@@ -282,7 +263,7 @@ class EnvironmentController {
   private:
     EnvironmentMonitor *_em;
     Device *_coolfan, *_mist, *_peltier;
-    int _heating, _cooling, _misting;
+    bool _heating, _cooling, _misting;
   public:
     EnvironmentController() {}
     EnvironmentController(EnvironmentMonitor *em, Device *coolfan, Device *mist, Device *peltier) {
@@ -293,14 +274,16 @@ class EnvironmentController {
       _heating, _cooling, _misting = 0;
     }
     void determineActions() {
-      int ts = _em->getTempState();
-      int hs = _em->getHumState();
-      if (ts == 0) {
+      if (_em->needCooling()) {
         startCooling();
-      } else if (ts == 2) {
+      } else if (_em->needHeating()) {
         startHeating();
+      } else {
+        stopHeating();
+        stopCooling();
+        startVentilation();
       }
-      if (hs == 0) {
+      if (_em->needHumidity()) {
         startMist();
       } else {
         stopMist();
@@ -316,9 +299,11 @@ class EnvironmentController {
       }
     }
     void stopCooling() {
-      _peltier->off();
-      _coolfan->off();
-      _cooling = 0;
+      if (_cooling) {
+        _peltier->off();
+        _coolfan->off();
+        _cooling = 0;
+      }
     }
     void startHeating() {
       if (!_heating) {
@@ -329,9 +314,11 @@ class EnvironmentController {
       }
     }
     void stopHeating() {
-      _peltier->off();
-      // Baffle open
-      _heating = 0;
+      if (_heating) {
+        _peltier->off();
+        // Baffle open
+        _heating = 0;
+      }
     }
     void startMist() {
       if (!_misting) {
@@ -340,8 +327,10 @@ class EnvironmentController {
       }
     }
     void stopMist() {
-      _mist->off();
-      _misting = 0;
+      if (_misting) {
+        _mist->off();
+        _misting = 0;
+      }
     }
     void startVentilation() {
       if (!_heating || !_cooling) _coolfan->on();
@@ -349,18 +338,23 @@ class EnvironmentController {
     void stopVentilation() {
       if (!_heating || !_cooling) _coolfan->off();
     }
+    void setup() {
+      _coolfan->setupDevice();
+      _mist->setupDevice();
+      _peltier->setupDevice();
+    }
     String setupToString() {
       String s;
       s += "Controlling environment...";
-      return s; 
+      return s;
     }
     String statusToString() {
       String s;
-      s += "Environment is being ";
-      if (_heating) s += "heated.";
-      if (_cooling) s += "cooled.";
-      if (_misting) s += "moisturized.";
-      if (!_heating || !_cooling || !_misting) s += "ventilated.";
+      s += "Environment is being";
+      if (_heating) s += " heated.";
+      if (_cooling) s += " cooled.";
+      if (_misting) s += " moisturized.";
+      if (!_heating || !_cooling || !_misting) s += " ventilated.";
       return s;
     }
 };
@@ -390,12 +384,6 @@ Relay coolfan("cool fan", COOLFAN);
 MistDevice mist("mist", MIST, MISTSWITCH);
 Relay peltier("peltier", PELTIER);
 
-Device deviceList[] = {
-  coolfan,
-  mist,
-  peltier
-};
-
 Band tempOpt(optimalTemperature);
 Band humOpt(optimalHumidity);
 Band tempWarn(warningTemperature);
@@ -409,13 +397,12 @@ void setup() {
   delay(50);
   Serial.println("Setting up...");
 
-  for (Device device : deviceList) {
-    device.setupDevice();
-  }
-  
-  Serial.println(ec.setupToString());
+  ec.setup();
+
   Serial.println(env.toString());
-  
+  Serial.println(em.toString());
+  Serial.println(ec.setupToString());
+
   //  baffleServo.attach(9);
   dht.begin();
 
@@ -441,9 +428,9 @@ void loop() {
 
   // Send reading to environment monitor and tell
   // environment controller to figure out what to do
-  em.setHTReading(&reading);
+  em.determineNeeds(&reading);
   ec.determineActions();
-  
+
   Serial.print("\n\nReading #");
   Serial.println(readingsTaken);
   Serial.println(reading.toString());
